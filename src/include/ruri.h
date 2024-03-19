@@ -28,10 +28,6 @@
  *
  *
  */
-// The macro __RURI_DEV__ will enable extra logs.
-// Do not uncomment it, use `-D__RURI_DEV__` to compile instead.
-// #define __RURI_DEV__
-//
 // Enable Linux features.
 #ifndef __linux__
 #error "This program is only for linux."
@@ -47,19 +43,6 @@
 #include <linux/stat.h>
 #include <linux/version.h>
 #include <linux/loop.h>
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
-#warning "This program has not been tested on Linux 3.x or earlier."
-#endif
-// This program need to be linked with `-lpthread` if the system uses glibc or musl.
-#include <pthread.h>
-#include <sched.h>
-// This program need to be linked with `-lseccomp`.
-#include <seccomp.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-// This program need to be linked with `-lcap`.
-#include <sys/capability.h>
 #include <sys/ioctl.h>
 #include <sys/mount.h>
 #include <sys/prctl.h>
@@ -71,6 +54,19 @@
 #include <sys/utsname.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <sched.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+// This program need to be linked with `-lpthread` if the system uses glibc or musl.
+#include <pthread.h>
+// This program need to be linked with `-lseccomp`.
+#include <seccomp.h>
+// This program need to be linked with `-lcap`.
+#include <sys/capability.h>
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
+#warning "This program has not been tested on Linux 3.x or earlier."
+#endif
 // Bool!!!
 #if __STDC_VERSION__ < 202000L
 #define bool _Bool
@@ -83,50 +79,47 @@
 #define MAX_COMMANDS (1024)
 #define MAX_ENVS (128 * 2)
 #define MAX_MOUNTPOINTS (128 * 2)
-// For interprocess communication.
-#define SOCKET_FILE "ruri.sock"
 // Include other headers.
 #include "elf-magic.h"
-#include "msg.h"
 #include "version.h"
-// Info of containers.
-struct __attribute__((aligned(128))) CONTAINERS {
-	cap_value_t drop_caplist[CAP_LAST_CAP + 1];
-	char *container_dir;
-	// For send_msg_daemon(), we define it as char*.
-	char *unshare_pid;
-	char *env[MAX_ENVS];
-	char *mountpoint[MAX_MOUNTPOINTS];
-	bool no_new_privs;
-	bool enable_seccomp;
-	struct CONTAINERS *next;
-};
+#include "k2v.h"
 // Info of a container to create.
-struct __attribute__((aligned(128))) CONTAINER_INFO {
+struct __attribute__((aligned(128))) CONTAINER {
+	// Container directory.
 	char *container_dir;
+	// Capabilities to drop.
 	cap_value_t drop_caplist[CAP_LAST_CAP + 1];
+	// Command for exec(2).
 	char *command[MAX_COMMANDS];
-	// Mount before chroot(2).
-	char *mountpoint[MAX_MOUNTPOINTS];
+	// Extra mountpoints.
+	char *extra_mountpoint[MAX_MOUNTPOINTS];
+	// Environment variables.
 	char *env[MAX_ENVS];
+	// Set NO_NEW_PRIV bit.
 	bool no_new_privs;
+	// Enable built-in seccomp profile.
 	bool enable_seccomp;
+	// Do not show warnings.
 	bool no_warnings;
-	bool use_unshare;
+	// Unshare container.
+	bool enable_unshare;
+	// Useless rootless container support.
 	bool rootless;
-	// Mount
-	bool host_runtime_dir;
-	// Only be used in ruri_daemon().
-	// For setns(2), we define it as char*.
-	char *unshare_pid;
-	// For cross-architecture containers.
+	// Mount host runtime.
+	bool mount_host_runtime;
+	// Container pid for setns(2).
+	pid_t ns_pid;
+	// Arch of cross-architecture container.
 	char *cross_arch;
+	// Path of QEMU binary.
 	char *qemu_path;
+	// Do not store .rurienv file.
+	bool use_rurienv;
 };
 // For get_magic().
 #define magicof(x) (x##_magic)
 #define maskof(x) (x##_mask)
-struct MAGIC {
+struct __attribute__((aligned(16))) MAGIC {
 	char *magic;
 	char *mask;
 };
@@ -146,27 +139,27 @@ struct MAGIC {
 		fprintf(stderr, "\033[4;1;38;2;254;228;208m%s\033[0m\n", "https://github.com/Moe-hacker/ruri/issues");        \
 		exit(EXIT_FAILURE);                                                                                           \
 	}
-void setup_seccomp(struct CONTAINER_INFO *container_info);
+void register_signal(void);
+void setup_seccomp(struct CONTAINER *container);
 void show_version_info(void);
 void show_version_code(void);
 void AwA(void);
 void show_helps(void);
 void show_examples(void);
-void add_to_list(cap_value_t *list, cap_value_t cap);
-bool is_in_list(const cap_value_t *list, cap_value_t cap);
-void del_from_list(cap_value_t *list, cap_value_t cap);
-ssize_t send_msg_daemon(const char *msg, struct sockaddr_un addr, int sockfd);
-ssize_t send_msg_client(const char *msg, struct sockaddr_un addr);
-ssize_t read_msg_daemon(char *buf, struct sockaddr_un addr, int sockfd);
-ssize_t read_msg_client(char *buf, struct sockaddr_un addr);
-void container_ps(void);
-void kill_daemon(void);
-int connect_to_daemon(struct sockaddr_un *addr);
-void ruri_daemon(void);
+void store_info(const struct CONTAINER *container);
+struct CONTAINER *read_info(struct CONTAINER *container, const char *container_dir);
+void add_to_caplist(cap_value_t *list, cap_value_t cap);
+bool is_in_caplist(const cap_value_t *list, cap_value_t cap);
+void del_from_caplist(cap_value_t *list, cap_value_t cap);
+void build_caplist(cap_value_t caplist[], bool privileged, cap_value_t drop_caplist_extra[], cap_value_t keep_caplist_extra[]);
 struct MAGIC *get_magic(const char *cross_arch);
-int run_unshare_container(struct CONTAINER_INFO *container_info);
-void run_chroot_container(struct CONTAINER_INFO *container_info);
+void run_unshare_container(struct CONTAINER *container);
+char *container_info_to_k2v(const struct CONTAINER *container);
+void run_chroot_container(struct CONTAINER *container);
+void run_rootless_container(struct CONTAINER *container);
+int trymount(const char *source, const char *target, unsigned int mountflags);
 void umount_container(const char *container_dir);
+struct CONTAINER *read_config(struct CONTAINER *container, const char *path);
 //   ██╗ ██╗  ███████╗   ████╗   ███████╗
 //  ████████╗ ██╔════╝ ██╔═══██╗ ██╔════╝
 //  ╚██╔═██╔╝ █████╗   ██║   ██║ █████╗

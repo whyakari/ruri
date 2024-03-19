@@ -28,6 +28,7 @@
 #
 # Premature optimization is the root of evil.
 #
+.NOTPARALLEL:
 CCCOLOR     = \033[1;38;2;254;228;208m
 LDCOLOR     = \033[1;38;2;254;228;208m
 STRIPCOLOR  = \033[1;38;2;254;228;208m
@@ -59,8 +60,6 @@ SHADOW_STACK = -mshstk
 FORTIFY = -D_FORTIFY_SOURCE=3 -Wno-unused-result
 # Other "one-key" optimization.
 OPTIMIZE = -O2
-# Dev marco for extra logs.
-DEV_MARCO = -D__RURI_DEV__
 # GNU Symbolic Debugger.
 DEBUGGER = -ggdb
 # Disable other optimizations.
@@ -69,8 +68,6 @@ NO_OPTIMIZE = -O0 -fno-omit-frame-pointer
 NO_RELRO = -z norelro
 # Disable No-eXecute.
 NO_NX = -z execstack
-# Position Independent Executables.
-NO_PIE = -no-pie
 # Disable Stack Canary.
 NO_CANARY = -fno-stack-protector
 # Warning Options.
@@ -80,9 +77,7 @@ OPTIMIZE_CFLAGS = $(LTO) $(PIE) $(CANARY) $(CLASH_PROTECT) $(SHADOW_STACK) $(AUT
 # Static link.
 STATIC_CFLAGS = $(OPTIMIZE_CFLAGS) -static
 # For Testing.
-DEV_CFLAGS = $(DEV_MARCO) $(DEBUGGER) $(NO_OPTIMIZE) $(NO_CANARY) $(WALL) $(COMMIT_ID) $(STANDARD)
-# AddressSanitizer.
-ASAN_CFLAGS = $(DEV_CFLAGS) -fsanitize=address,leak -fsanitize-recover=address,all
+DEV_CFLAGS = $(DEBUGGER) $(NO_OPTIMIZE) $(NO_CANARY) $(WALL) $(COMMIT_ID) $(STANDARD)
 SRC = src/*.c
 HEADER = src/include/*.h
 BIN_TARGET = ruri
@@ -94,17 +89,17 @@ FORMATER = clang-format -i
 # For `make check`.
 CHECKER = clang-tidy --use-color
 # Unused checks are disabled.
-CHECKER_FLAGS = --checks=*,-clang-analyzer-security.insecureAPI.strcpy,-altera-unroll-loops,-cert-err33-c,-concurrency-mt-unsafe,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-readability-function-cognitive-complexity,-cppcoreguidelines-avoid-magic-numbers,-readability-magic-numbers,-bugprone-easily-swappable-parameters,-cert-err34-c,-misc-include-cleaner,-readability-identifier-length
+CHECKER_FLAGS = --checks=*,-clang-analyzer-security.insecureAPI.strcpy,-altera-unroll-loops,-cert-err33-c,-concurrency-mt-unsafe,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-readability-function-cognitive-complexity,-cppcoreguidelines-avoid-magic-numbers,-readability-magic-numbers,-bugprone-easily-swappable-parameters,-cert-err34-c,-misc-include-cleaner,-readability-identifier-length,-bugprone-signal-handler,-cert-msc54-cpp,-cert-sig30-c,-altera-id-dependent-backward-branch
 # Link with libcap, libpthread and libseccomp.
 LD_FLAGS = -lcap -lpthread -lseccomp $(NX) $(RELRO)
-DEV_LD_FLAGS = -lcap -lpthread -lseccomp $(NO_RELRO) $(NO_NX) $(NO_PIE)
+DEV_LD_FLAGS = -lcap -lpthread -lseccomp $(NO_RELRO) $(NO_NX)
 # Fix issues in termux (with bionic).
 BIONIC_FIX = -ffunction-sections -fdata-sections
 BIONIC_CFLAGS = $(OPTIMIZE_CFLAGS) $(BIONIC_FIX) -static
 # Bionic has built-in libpthread.
 BIONIC_LD_FLAGS = -lcap -lseccomp -Wl,--gc-sections $(NX) $(RELRO)
 # Target.
-objects = caplist.o chroot.o daemon.o info.o seccomp.o socket.o tool.o unshare.o elf-magic.o main.o
+objects = caplist.o chroot.o info.o rurienv.o seccomp.o signal.o umount.o unshare.o rootless.o mount.o k2v.o elf-magic.o config.o main.o
 O = out
 .ONESHELL:
 all :CFLAGS=$(OPTIMIZE_CFLAGS)
@@ -118,13 +113,6 @@ all :build_dir $(objects)
 	@cd ..&&rm -rf $(O)
 dev :CFLAGS=$(DEV_CFLAGS)
 dev :build_dir $(objects)
-	@cd $(O)
-	$(LD_LOG) $(BIN_TARGET)
-	@$(CC) $(CFLAGS) -o $(BIN_TARGET) $(objects) $(DEV_LD_FLAGS)
-	@cp -f $(BIN_TARGET) ../
-	@cd ..&&rm -rf $(O)
-asan :CFLAGS=$(ASAN_CFLAGS)
-asan :build_dir $(objects)
 	@cd $(O)
 	$(LD_LOG) $(BIN_TARGET)
 	@$(CC) $(CFLAGS) -o $(BIN_TARGET) $(objects) $(DEV_LD_FLAGS)
@@ -172,6 +160,9 @@ clean :
 	@rm -rf $(O)||true
 	$(CLEAN_LOG) peda*
 	@rm -f peda*
+upk2v :
+	cp ../libk2v/src/k2v.c src/k2v.c
+	cp ../libk2v/src/include/k2v.h src/include/k2v.h
 help :
 	@printf "\033[1;38;2;254;228;208mUsage:\n"
 	@echo "  make all            compile"
@@ -181,7 +172,6 @@ help :
 	@echo "  make clean          clean"
 	@echo "Only for developers:"
 	@echo "  make dev            compile without optimizations, enable gdb debug information and extra logs."
-	@echo "  make asan           enable ASAN"
 	@echo "  make check          run clang-tidy"
 	@echo "  make format         format code"
 	@echo "*Premature optimization is the root of all evil."

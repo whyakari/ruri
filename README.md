@@ -18,6 +18,8 @@
 <p align="center">「 须臾水面明月出，沧江万顷瑠璃寒 」</p>
 
 -----------------     
+# About v3.0:
+V3.0 contains some breaking changes, please read the changelog, and help page in `ruri -h` if you are upgrading from v2.x.        
 # WARNING:      
 ```
 * Your warranty is void.
@@ -30,7 +32,7 @@
 > --Torvalds
 
 If you think something does not work as expected, please [Open a new isssue](https://github.com/Moe-hacker/ruri/issues)      
-# About ruri:         
+# About:         
 &emsp;ruri is pronounced as  `luli`, or you can call it `瑠璃` in Chinese or Japanese as well.       
 &emsp;ruri is the romaji acronym of Lightweight, User-friendly Linux-container Implementation. It's designed to provide better security for Linux containers on devices that do not support docker.       
 - Simple:      
@@ -66,11 +68,19 @@ sudo ruri /tmp/alpine
 ```
 For unshare container:      
 ```
-sudo ruri -D
 sudo ruri -u /tmp/alpine
 ```
 Very simple as you can see.    
 For command line examples, please see `ruri -H`.      
+# About config:
+Since v3.0, ruri can use [k2v](https://github.com/Moe-hacker/libk2v), a new simple config format, to store the config of a container.          
+# About rurienv:
+Since v3.0, ruri removed the daemon, it use a new way to store the info of a running container.         
+ruri will creat `/.rurienv` file into the container, to store runtime info of container.          
+The rurienv file is automatically controled by ruri, please do not edit it.      
+# About tty:      
+The command `tty` in ruri might say that "not a tty".      
+If you need to run some program like `gpg`, please use `script -q -O /dev/null` in container.      
 # About runtime dirs:
 ruri will create /dev/, /sys/ and /proc/ after chroot(2) into container for better security. You can use `-S` option to force it to bind-mount system runtime dirs.      
 # About cross-arch container:
@@ -83,8 +93,6 @@ It's a very useless function. Ruri creates a new user namespace and run chroot(2
 Adding CAP_SYS_ADMIN can not fix any problems, so just do not use this function.      
 # About Seccomp:
 The seccomp rule of ruri is based on Docker's default seccomp profile. ruri does not provide the way to change it, but you can edit src/seccomp.c and replace setup_seccomp() with your own config.      
-# About daemon:
-The daemon will create a socket file in $TMPDIR/ruri.sock (to be /tmp/ruri.sock on common GNU/Linux) for interprocess communication. This file will be automatically removed after running `ruri -K`.         
 # License:
 License of code:      
 - Licensed under the MIT License      
