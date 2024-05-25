@@ -39,24 +39,53 @@ static void check_container(const struct CONTAINER *container)
 	 */
 	// Check if container directory is given.
 	if (container->container_dir == NULL) {
-		error("\033[31mError: container directory is not set QwQ\n");
+		error("{red}Error: container directory is not set QwQ\n");
 	}
 	// Refuse to use `/` for container directory.
 	if (strcmp(container->container_dir, "/") == 0) {
-		error("\033[31mError: `/` is not allowed to use as a container directory QwQ\n");
+		error("{red}Error: `/` is not allowed to use as a container directory QwQ\n");
 	}
 	// Check if we are running with root privileges.
 	if (getuid() != 0 && !(container->rootless)) {
-		error("\033[31mError: this program should be run with root privileges QwQ\n");
+		error("{red}Error: this program should be run with root privileges QwQ\n");
 	}
 	// Check if container directory exists.
 	DIR *direxist = opendir(container->container_dir);
 	if (direxist == NULL) {
-		error("\033[31mError: container directory does not exist QwQ\n");
+		error("{red}Error: container directory does not exist QwQ\n");
 	}
 	closedir(direxist);
 }
-static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *container)
+static void parse_cgroup_settings(const char *str, struct CONTAINER *container)
+{
+	/*
+	 * Parse and set cgroup limit.
+	 * We will not check if the config is vaild.
+	 */
+	char buf[16] = { '\0' };
+	char *limit = NULL;
+	// Get limit type.
+	for (size_t i = 0; i < 16; i++) {
+		// Avoid overflow.
+		if (i >= strlen(str)) {
+			break;
+		}
+		if (str[i] == '=') {
+			limit = strdup(&(str[i + 1]));
+			break;
+		}
+		buf[i] = str[i];
+		buf[i + 1] = '\0';
+	}
+	if (strcmp("cpuset", buf) == 0) {
+		container->cpuset = limit;
+	} else if (strcmp("memory", buf) == 0) {
+		container->memory = limit;
+	} else {
+		error("{red}Unknown cgroup option %s\n", str);
+	}
+}
+static void parse_args(int argc, char **argv, struct CONTAINER *container)
 {
 	/*
 	 * 100% shit-code here.
@@ -67,17 +96,17 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 	 */
 	// Check if arguments are given.
 	if (argc <= 1) {
-		fprintf(stderr, "\033[31mError: too few arguments QwQ\033[0m\n");
+		cfprintf(stderr, "{red}Error: too few arguments QwQ{clear}\n");
 		show_helps();
 		exit(EXIT_FAILURE);
 	}
+	// Init configs.
 	bool dump_config = false;
 	char *output_path = NULL;
 	cap_value_t keep_caplist_extra[CAP_LAST_CAP + 1] = { INIT_VALUE };
 	cap_value_t drop_caplist_extra[CAP_LAST_CAP + 1] = { INIT_VALUE };
 	cap_value_t cap = INIT_VALUE;
 	bool privileged = false;
-	container = (struct CONTAINER *)malloc(sizeof(struct CONTAINER));
 	container->enable_seccomp = false;
 	container->no_new_privs = false;
 	container->no_warnings = false;
@@ -87,29 +116,32 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 	container->command[0] = NULL;
 	container->env[0] = NULL;
 	container->extra_mountpoint[0] = NULL;
+	container->extra_ro_mountpoint[0] = NULL;
 	container->cross_arch = NULL;
 	container->qemu_path = NULL;
 	container->ns_pid = INIT_VALUE;
 	container->use_rurienv = true;
+	container->ro_root = false;
+	container->cpuset = NULL;
+	container->memory = NULL;
+	// Use the time for container_id.
+	time_t tm = time(NULL);
+	container->container_id = (int)(tm % 86400);
 	// A very large and shit-code for() loop.
 	// At least it works fine...
 	for (int index = 1; index < argc; index++) {
 		/**** Deprecated options. ****/
 		if (strcmp(argv[index], "-K") == 0) {
-			printf("\033[33m%s option has been deprecated.\n", argv[index]);
+			cprintf("{yellow}%s option has been deprecated.{clear}\n", argv[index]);
 			exit(EXIT_SUCCESS);
 		}
 		if (strcmp(argv[index], "-t") == 0) {
-			printf("\033[33m%s option has been deprecated.\n", argv[index]);
+			cprintf("{yellow}%s option has been deprecated.{clear}\n", argv[index]);
 			index++;
 			exit(EXIT_SUCCESS);
 		}
 		if (strcmp(argv[index], "-T") == 0) {
-			printf("\033[33m%s option has been deprecated.\n", argv[index]);
-			exit(EXIT_SUCCESS);
-		}
-		if (strcmp(argv[index], "-l") == 0) {
-			printf("\033[33m%s option has been deprecated.\n", argv[index]);
+			cprintf("{yellow}%s option has been deprecated.{clear}\n", argv[index]);
 			exit(EXIT_SUCCESS);
 		}
 		/**** For other options ****/
@@ -152,26 +184,26 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 		/**** For running a container ****/
 		// Just make clang-tidy happy.
 		if (argv[index] == NULL) {
-			error("\033[31mFailed to parse arguments.\n");
+			error("{red}Failed to parse arguments.\n");
 		}
 		// Use config file.
 		if (strcmp(argv[index], "-c") == 0 || strcmp(argv[index], "--config") == 0) {
 			if (index == argc - 1) {
-				error("\033[31mPlease specify a config file !\n\033[0m");
+				error("{red}Please specify a config file !\n{clear}");
 			}
 			index++;
-			container = read_config(container, argv[index]);
+			read_config(container, argv[index]);
 			break;
 		}
 		// Dump config.
-		else if (strcmp(argv[index], "-D") == 0 || strcmp(argv[index], "--dump-config") == 0) {
+		if (strcmp(argv[index], "-D") == 0 || strcmp(argv[index], "--dump-config") == 0) {
 			dump_config = true;
 		}
 		// Output file.
 		else if (strcmp(argv[index], "-o") == 0 || strcmp(argv[index], "--output") == 0) {
 			index++;
 			if (index == argc - 1) {
-				error("\033[31mPlease specify the output file\n\033[0m");
+				error("{red}Please specify the output file\n{clear}");
 			}
 			output_path = argv[index];
 		}
@@ -186,7 +218,7 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 		// Simulate architecture.
 		else if (strcmp(argv[index], "-a") == 0 || strcmp(argv[index], "--arch") == 0) {
 			if (index == argc - 1) {
-				error("\033[31mPlease specify the arch\n\033[0m");
+				error("{red}Please specify the arch\n{clear}");
 			}
 			index++;
 			container->cross_arch = strdup(argv[index]);
@@ -195,7 +227,7 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 		else if (strcmp(argv[index], "-q") == 0 || strcmp(argv[index], "--qemu-path") == 0) {
 			index++;
 			if (index == argc - 1) {
-				error("\033[31mPlease specify the path of qemu binary\n\033[0m");
+				error("{red}Please specify the path of qemu binary\n{clear}");
 			}
 			container->qemu_path = strdup(argv[index]);
 		}
@@ -223,6 +255,19 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 		else if (strcmp(argv[index], "-S") == 0 || strcmp(argv[index], "--host-runtime") == 0) {
 			container->mount_host_runtime = true;
 		}
+		// Mount / as read-only.
+		else if (strcmp(argv[index], "-R") == 0 || strcmp(argv[index], "--read-only") == 0) {
+			container->ro_root = true;
+		}
+		// cgroup limit.
+		else if (strcmp(argv[index], "-l") == 0 || strcmp(argv[index], "--limit") == 0) {
+			index++;
+			if ((argv[index] != NULL)) {
+				parse_cgroup_settings(argv[index], container);
+			} else {
+				error("{red}Unknown cgroup option\n");
+			}
+		}
 		// Set extra env.
 		else if (strcmp(argv[index], "-e") == 0 || strcmp(argv[index], "--env") == 0) {
 			index++;
@@ -237,11 +282,11 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 					}
 					// Max 128 envs.
 					if (i == (MAX_ENVS - 1)) {
-						error("\033[31mToo many envs QwQ\n");
+						error("{red}Too many envs QwQ\n");
 					}
 				}
 			} else {
-				error("\033[31mError: unknown env QwQ\n");
+				error("{red}Error: unknown env QwQ\n");
 			}
 		}
 		// Set extra mountpoints.
@@ -258,11 +303,32 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 					}
 					// Max 128 mountpoints.
 					if (i == (MAX_MOUNTPOINTS - 1)) {
-						error("\033[31mToo many mountpoints QwQ\n");
+						error("{red}Too many mountpoints QwQ\n");
 					}
 				}
 			} else {
-				error("\033[31mError: unknown mountpoint QwQ\n");
+				error("{red}Error: unknown mountpoint QwQ\n");
+			}
+		}
+		// Set extra read-only mountpoints.
+		else if (strcmp(argv[index], "-M") == 0 || strcmp(argv[index], "--ro-mount") == 0) {
+			index++;
+			if ((argv[index] != NULL) && (argv[index + 1] != NULL)) {
+				for (int i = 0; i < MAX_MOUNTPOINTS; i++) {
+					if (container->extra_ro_mountpoint[i] == NULL) {
+						container->extra_ro_mountpoint[i] = realpath(argv[index], NULL);
+						index++;
+						container->extra_ro_mountpoint[i + 1] = strdup(argv[index]);
+						container->extra_ro_mountpoint[i + 2] = NULL;
+						break;
+					}
+					// Max 128 mountpoints.
+					if (i == (MAX_MOUNTPOINTS - 1)) {
+						error("{red}Too many mountpoints QwQ\n");
+					}
+				}
+			} else {
+				error("{red}Error: unknown mountpoint QwQ\n");
 			}
 		}
 		// Extra capabilities to keep.
@@ -272,10 +338,10 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 				if (cap_from_name(argv[index], &cap) == 0) {
 					add_to_caplist(keep_caplist_extra, cap);
 				} else {
-					error("\033[31mError: unknown capability `%s`\nQwQ\033[0m\n", argv[index]);
+					error("{red}or: unknown capability `%s`\nQwQ{clear}\n", argv[index]);
 				}
 			} else {
-				error("\033[31mMissing argument\n");
+				error("{red}Missing argument\n");
 			}
 		}
 		// Extra capabilities to drop.
@@ -285,10 +351,10 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 				if (cap_from_name(argv[index], &cap) == 0) {
 					add_to_caplist(drop_caplist_extra, cap);
 				} else {
-					error("\033[31mError: unknown capability `%s`\nQwQ\033[0m\n", argv[index]);
+					error("{red}Error: unknown capability `%s`\nQwQ{clear}\n", argv[index]);
 				}
 			} else {
-				error("\033[31mMissing argument\n");
+				error("{red}Missing argument\n");
 			}
 		}
 		// A very shit way to judge that this is a dir...
@@ -296,7 +362,7 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 			// Get the absolute path of container.
 			container->container_dir = realpath(argv[index], NULL);
 			if (container->container_dir == NULL) {
-				error("\033[31mCONTAINER_DIR %s does not exist\033[0m\n", argv[index]);
+				error("{red}CONTAINER_DIR %s does not exist{clear}\n", argv[index]);
 			}
 			index++;
 			// Arguments after container_dir will be read as init command.
@@ -317,7 +383,7 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 		// For unknown arguments, yeah I didn't forgot it...
 		else {
 			show_helps();
-			error("\033[31mError: unknow option `%s`\033[0m\n", argv[index]);
+			error("{red}Error: unknown option `%s`{clear}\n", argv[index]);
 		}
 	}
 	// Set default init command to run.
@@ -338,30 +404,30 @@ static struct CONTAINER *parse_args(int argc, char **argv, struct CONTAINER *con
 	if (dump_config) {
 		// Check if container directory is given.
 		if (container->container_dir == NULL) {
-			error("\033[31mError: container directory is not set QwQ\n");
+			error("{red}Error: container directory is not set QwQ\n");
 		}
 		// Refuse to use `/` for container directory.
 		if (strcmp(container->container_dir, "/") == 0) {
-			error("\033[31mError: `/` is not allowed to use as a container directory QwQ\n");
+			error("{red}Error: `/` is not allowed to use as a container directory QwQ\n");
 		}
 		// Check if container directory exists.
 		DIR *direxist = opendir(container->container_dir);
 		if (direxist == NULL) {
-			error("\033[31mError: container directory does not exist QwQ\n");
+			error("{red}Error: container directory does not exist QwQ\n");
 		}
 		closedir(direxist);
 		char *config = container_info_to_k2v(container);
 		if (output_path == NULL) {
-			printf("%s", config);
+			cprintf("%s", config);
 			exit(EXIT_SUCCESS);
 		}
 		unlink(output_path);
 		remove(output_path);
-		int fd = open(output_path, O_CREAT | O_RDWR, S_IRUSR | S_IRGRP | S_IROTH | S_IWGRP | S_IWUSR | S_IWOTH);
+		int fd = open(output_path, O_CREAT | O_CLOEXEC | O_RDWR, S_IRUSR | S_IRGRP | S_IROTH | S_IWGRP | S_IWUSR | S_IWOTH);
 		write(fd, config, strlen(config));
+		free(config);
 		exit(EXIT_SUCCESS);
 	}
-	return container;
 }
 // It works on my machine!!!
 int main(int argc, char **argv)
@@ -376,21 +442,14 @@ int main(int argc, char **argv)
 	// Catch coredump signal.
 	register_signal();
 	// Info of container to run.
-	struct CONTAINER *container = NULL;
+	struct CONTAINER *container = (struct CONTAINER *)malloc(sizeof(struct CONTAINER));
 	// Parse arguments.
-	container = parse_args(argc, argv, container);
+	parse_args(argc, argv, container);
 	// Check container and the running environment.
 	check_container(container);
-	// Run container.
 	// unset $LD_PRELOAD.
-	if (getenv("LD_PRELOAD") != NULL) {
-		unsetenv("LD_PRELOAD");
-		pid_t pid = fork();
-		if (pid > 0) {
-			waitpid(pid, NULL, 0);
-			exit(EXIT_SUCCESS);
-		}
-	}
+	unsetenv("LD_PRELOAD");
+	// Run container.
 	if ((container->enable_unshare) && !(container->rootless)) {
 		run_unshare_container(container);
 	} else if ((container->rootless)) {

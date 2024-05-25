@@ -32,15 +32,18 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 // Bool!!!
 #if __STDC_VERSION__ < 202000L
+#ifndef bool
 #define bool _Bool
 #define true ((_Bool) + 1u)
 #define false ((_Bool) + 0u)
 #endif
+#endif
 // Version info.
-#define LIBK2V_MAJOR 0
-#define LIBK2V_MINOR 4
+#define LIBK2V_MAJOR 1
+#define LIBK2V_MINOR 0
 // Warning.
 extern bool k2v_stop_at_warning;
 extern bool k2v_show_warning;
@@ -62,3 +65,19 @@ char *float_to_k2v(const char *key, float val);
 char *char_array_to_k2v(const char *key, char *const *val, int len);
 char *int_array_to_k2v(const char *key, int *val, int len);
 char *float_array_to_k2v(const char *key, float *val, int len);
+size_t k2v_get_filesize(const char *path);
+#define k2v_add_config(type, __k2v_buf, ...)                  \
+	({                                                    \
+		char *__k2v_tmp = type##_to_k2v(__VA_ARGS__); \
+		size_t __k2v_size = 4;                        \
+		if (__k2v_buf != NULL) {                      \
+			__k2v_size += strlen(__k2v_buf);      \
+		}                                             \
+		__k2v_size += strlen(__k2v_tmp) + 4;          \
+		__k2v_buf = realloc(__k2v_buf, __k2v_size);   \
+		strcat(__k2v_buf, __k2v_tmp);                 \
+		free(__k2v_tmp);                              \
+		__k2v_tmp = strdup(__k2v_buf);                \
+		free(__k2v_buf);                              \
+		__k2v_tmp;                                    \
+	})

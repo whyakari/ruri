@@ -32,22 +32,31 @@
 void umount_container(const char *container_dir)
 {
 	if (container_dir == NULL) {
-		error("\033[31mError: container directory does not exist QwQ\n");
+		error("{red}Error: container directory does not exist QwQ\n");
 	}
 	// Do not use '/' for container_dir.
 	if (strcmp(container_dir, "/") == 0) {
-		error("\033[31mError: `/` is not allowed to use as a container directory QwQ\n");
+		error("{red}Error: `/` is not allowed to use as a container directory QwQ\n");
 	}
 	// Check if container_dir exist.
 	DIR *direxist = opendir(container_dir);
 	if (direxist == NULL) {
-		error("\033[31mError: container directory does not exist QwQ\n");
+		error("{red}Error: container directory does not exist QwQ\n");
 	}
 	closedir(direxist);
 	struct CONTAINER *container = read_info(NULL, container_dir);
 	char infofile[PATH_MAX] = { '\0' };
 	sprintf(infofile, "%s/.rurienv", container_dir);
-	remove(infofile);
+	int fd = open(infofile, O_RDONLY | O_CLOEXEC);
+	// Unset immutable flag on .rurienv.
+	int attr = 0;
+	if (fd >= 0) {
+		ioctl(fd, FS_IOC_GETFLAGS, &attr);
+		attr &= ~FS_IMMUTABLE_FL;
+		ioctl(fd, FS_IOC_SETFLAGS, &attr);
+		remove(infofile);
+		close(fd);
+	}
 	// Get path to umount.
 	char sys_dir[PATH_MAX];
 	char proc_dir[PATH_MAX];
@@ -61,12 +70,13 @@ void umount_container(const char *container_dir)
 	strcat(dev_dir, "/dev");
 	// Umount other mountpoints.
 	if (container != NULL) {
+		// Umount extra_mountpoint.
 		for (int i = 1; true; i += 2) {
 			if (container->extra_mountpoint[i] != NULL) {
 				strcpy(to_umountpoint, container_dir);
 				strcat(to_umountpoint, container->extra_mountpoint[i]);
 				for (int j = 0; j < 10; j++) {
-					umount2(to_umountpoint, MNT_DETACH | MNT_FORCE);
+					umount2(to_umountpoint, MNT_DETACH);
 					umount(to_umountpoint);
 					usleep(20000);
 				}
@@ -74,6 +84,21 @@ void umount_container(const char *container_dir)
 				break;
 			}
 		}
+		// Umount extra_ro_mountpoint.
+		for (int i = 1; true; i += 2) {
+			if (container->extra_ro_mountpoint[i] != NULL) {
+				strcpy(to_umountpoint, container_dir);
+				strcat(to_umountpoint, container->extra_ro_mountpoint[i]);
+				for (int j = 0; j < 10; j++) {
+					umount2(to_umountpoint, MNT_DETACH);
+					umount(to_umountpoint);
+					usleep(20000);
+				}
+			} else {
+				break;
+			}
+		}
+		free(container);
 	}
 	// Force umount system runtime directories for 10 times.
 	for (int i = 1; i < 10; i++) {

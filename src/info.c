@@ -28,55 +28,6 @@
  *
  */
 #include "include/ruri.h"
-// As an easter egg.
-void AwA(void)
-{
-	/*
-	 * Nothing is useful at this function, just for fun.
-	 */
-	// Get the size of terminal.
-	struct winsize size;
-	ioctl(STDOUT_FILENO, TIOCGWINSZ, &size);
-	u_short col = size.ws_col;
-	if (col % 2 == 1) {
-		col -= 1;
-	}
-	// For centering output.
-	char space[col / 2 + 1];
-	space[0] = '\0';
-	if (col > 60) {
-		col /= 2;
-		col -= 28;
-		memset(space, ' ', col * sizeof(char));
-		space[col] = '\0';
-	} else {
-		strcat(space, "");
-	}
-	printf("%s%s\n", space, "\033[1;38;2;255;255;255m              ██                        ██");
-	printf("%s%s\n", space, "            ██  ██          ██        ██  ██");
-	printf("%s%s\n", space, "            ██    ████        ██    ██      ██");
-	printf("%s%s\n", space, "          ██          ██    ██    ████      ██");
-	printf("%s%s\n", space, "          ██      ██████████████████          ██");
-	printf("%s%s\n", space, "        ██      ██                  ██        ██");
-	printf("%s%s\n", space, "        ██    ██                      ████    ██");
-	printf("%s%s\n", space, "      ████████        ██      ██          ████  ██");
-	printf("%s%s\n", space, "      ██    ██        ██    ██  ██    ██    ██  ██");
-	printf("%s%s\n", space, "    ████      ██    ██  ████  ██    ██  ██    ██████");
-	printf("%s%s\n", space, "    ██        ██  ██    ██      ████  ██  ██  ████████");
-	printf("%s%s\n", space, "    ██      ██  ██                          ████");
-	printf("%s%s\n", space, "    ██        ██                    ██████    ██");
-	printf("%s%s\n", space, "  ████        ██    ████          ██      ██  ██");
-	printf("%s%s\n", space, "  ██          ██        ██          \033[1;38;2;255;0;0m██  ██\033[1;38;2;255;255;255m    ██");
-	printf("%s%s\n", space, "  ██          ██          ██          \033[1;38;2;255;0;0m██\033[1;38;2;255;255;255m      ██");
-	printf("%s%s\n", space, "  ██          ██    ██████          \033[1;38;2;255;0;0m██  ██\033[1;38;2;255;255;255m      ██");
-	printf("%s%s\n", space, "  ████    ██  ██                                ██");
-	printf("%s%s\n", space, "    ████  ██████          ██    ██            ██");
-	printf("%s%s\n", space, "      ██████  ████          ████          ████");
-	printf("%s%s\n", space, "                ████                    ████");
-	printf("%s%s\n", space, "                    ████████████████████");
-	printf("%s\n", "");
-}
-// For `ruri -v`.
 void show_version_info(void)
 {
 	/*
@@ -84,24 +35,24 @@ void show_version_info(void)
 	 * Version info is defined in macro RURI_VERSION.
 	 * RURI_COMMIT_ID is defined in Makefile.
 	 */
-	printf("\n");
-	printf("\033[1;38;2;254;228;208m      ●●●●  ●   ● ●●●●   ●●●\n");
-	printf("      ●   ● ●   ● ●   ●   ●\n");
-	printf("      ●●●●  ●   ● ●●●●    ●\n");
-	printf("      ●  ●  ●   ● ●  ●    ●\n");
-	printf("      ●   ●  ●●●  ●   ●  ●●●\n");
-	printf("  Licensed under the MIT License\n");
-	printf("    <https://mit-license.org>\n");
-	printf("Copyright (C) 2022-2024 Moe-hacker\n");
-	printf("%s%s%s", "ruri version .....:  ", RURI_VERSION, "\n");
-	printf("%s%s%s", "Commit id ........:  ", RURI_COMMIT_ID, "\n");
-	printf("%s%d%s%d%s", "libcap ...........:  ", LIBCAP_MAJOR, ".", LIBCAP_MINOR, "\n");
-	printf("%s%d%s%d%s%d%s", "libseccomp .......:  ", SCMP_VER_MAJOR, ".", SCMP_VER_MINOR, ".", SCMP_VER_MICRO, "\n");
-	printf("%s%d%s%d%s", "libk2v ...........:  ", LIBK2V_MAJOR, ".", LIBK2V_MINOR, "\n");
-	printf("%s%s\n", "Compiler version .:  ", __VERSION__);
-	printf("%s%s\n", "Build date .......:  ", __TIMESTAMP__);
-	printf("\nThere is NO WARRANTY, to the extent permitted by law\n");
-	printf("\033[0m\n");
+	cprintf("\n");
+	cprintf("{base}      ●●●●  ●   ● ●●●●   ●●●\n");
+	cprintf("{base}      ●   ● ●   ● ●   ●   ●\n");
+	cprintf("{base}      ●●●●  ●   ● ●●●●    ●\n");
+	cprintf("{base}      ●  ●  ●   ● ●  ●    ●\n");
+	cprintf("{base}      ●   ●  ●●●  ●   ●  ●●●\n");
+	cprintf("{base}  Licensed under the MIT License\n");
+	cprintf("{base}    <https://mit-license.org>\n");
+	cprintf("{base}Copyright (C) 2022-2024 Moe-hacker\n");
+	cprintf("{base}%s%s%s", "ruri version .....:  ", RURI_VERSION, "\n");
+	cprintf("{base}%s%d%s%d%s", "libcap ...........:  ", LIBCAP_MAJOR, ".", LIBCAP_MINOR, "\n");
+	cprintf("{base}%s%d%s%d%s%d%s", "libseccomp .......:  ", SCMP_VER_MAJOR, ".", SCMP_VER_MINOR, ".", SCMP_VER_MICRO, "\n");
+	cprintf("{base}%s%d%s%d%s", "libk2v ...........:  ", LIBK2V_MAJOR, ".", LIBK2V_MINOR, "\n");
+	cprintf("{base}%s%d%s%d%s", "cprintf ..........:  ", CPRINTF_MAJOR, ".", CPRINTF_MINOR, "\n");
+	cprintf("{base}%s%s\n", "Compiler version .:  ", __VERSION__);
+	cprintf("{base}%s%s\n", "Build date .......:  ", __TIMESTAMP__);
+	cprintf("{base}\nThere is NO WARRANTY, to the extent permitted by law\n");
+	cprintf("{clear}\n");
 }
 // For `ruri -V`.
 void show_version_code(void)
@@ -111,7 +62,7 @@ void show_version_code(void)
 	 * so in fact it's very useless.
 	 * Maybe it can be useful one day...
 	 */
-	printf("%s\n", RURI_VERSION);
+	cprintf("%s\n", RURI_VERSION);
 }
 // For `ruri -h`.
 void show_helps(void)
@@ -120,39 +71,47 @@ void show_helps(void)
 	 * Help page of ruri.
 	 * I think you can understand...
 	 */
-	printf("\033[1;38;2;254;228;208mruri %s %s\n\n", RURI_VERSION, RURI_COMMIT_ID);
-	printf("Lightweight, User-friendly Linux-container Implementation\n");
-	printf("\n");
-	printf("Usage:\n");
-	printf("  ruri [OPTIONS]...\n");
-	printf("  ruri [ARGS]... [CONTAINER_DIRECTORY]... [COMMAND [ARGS]...]\n");
-	printf("\n");
-	printf("OPTIONS:\n");
-	printf("  -v, --version                   Show version info\n");
-	printf("  -V, --version-code              Show version code\n");
-	printf("  -h, --help                      Show helps\n");
-	printf("  -H, --show-examples             Show helps and commandline examples\n");
-	printf("  -U, --umount [container_dir]    Umount a container\n");
-	printf("\n");
-	printf("ARGS:\n");
-	printf("  -D, --dump-config               Dump the config.\n");
-	printf("  -o, --output [config file]      Set output file of `-D` option\n");
-	printf("  -c, --config [config file]      Use config file\n");
-	printf("  -a, --arch [arch]               Simulate architecture via binfmt_misc & QEMU, need `-q`\n");
-	printf("  -q, --qemu-path [path]          Specify the path of QEMU\n");
-	printf("  -u, --unshare                   Enable unshare feature\n");
-	printf("  -n, --no-new-privs              Set NO_NEW_PRIVS Flag\n");
-	printf("  -N, --no-rurienv                Do not use .rurienv file\n");
-	printf("  -s, --enable-seccomp            Enable built-in Seccomp profile\n");
-	printf("  -p, --privileged                Run privileged container\n");
-	printf("  -r, --rootless                  Run rootless container\n");
-	printf("  -k, --keep [cap]                Keep the specified cap\n");
-	printf("  -d, --drop [cap]                Drop the specified cap\n");
-	printf("  -e, --env [env] [value]         Set env to its value *Not work if init command is like `su -`\n");
-	printf("  -m, --mount [dir/dev/img] [dir] Mount dir/block-device/image to mountpoint\n");
-	printf("  -S, --host-runtime              Bind-mount /dev/, /sys/ and /proc/ from host\n");
-	printf("  -w, --no-warnings               Disable warnings\n");
-	printf("\n");
+	cprintf("{base}ruri %s\n\n", RURI_VERSION);
+	cprintf("{base}Lightweight, User-friendly Linux-container Implementation\n");
+	cprintf("\n");
+	cprintf("{base}Usage:\n");
+	cprintf("{base}  ruri [OPTIONS]...\n");
+	cprintf("{base}  ruri [ARGS]... [CONTAINER_DIRECTORY]... [COMMAND [ARGS]...]\n");
+	cprintf("\n");
+	cprintf("{base}OPTIONS:\n");
+	cprintf("{base}  -v, --version ...................: Show version info\n");
+	cprintf("{base}  -V, --version-code ..............: Show version code\n");
+	cprintf("{base}  -h, --help ......................: Show helps\n");
+	cprintf("{base}  -H, --show-examples .............: Show helps and commandline examples\n");
+	cprintf("{base}  -U, --umount [container_dir] ....: Umount a container\n");
+	cprintf("\n");
+	cprintf("{base}ARGS:\n");
+	cprintf("{base}  -D, --dump-config ...................: Dump the config.\n");
+	cprintf("{base}  -o, --output [config file] ..........: Set output file of `-D` option\n");
+	cprintf("{base}  -c, --config [config file] ..........: Use config file\n");
+	cprintf("{base}  -a, --arch [arch] ...................: Simulate architecture via binfmt_misc (*)\n");
+	cprintf("{base}  -q, --qemu-path [path] ..............: Specify the path of QEMU\n");
+	cprintf("{base}  -u, --unshare .......................: Enable unshare feature\n");
+	cprintf("{base}  -n, --no-new-privs ..................: Set NO_NEW_PRIVS Flag\n");
+	cprintf("{base}  -N, --no-rurienv ....................: Do not use .rurienv file\n");
+	cprintf("{base}  -s, --enable-seccomp ................: Enable built-in Seccomp profile\n");
+	cprintf("{base}  -p, --privileged ....................: Run privileged container\n");
+	cprintf("{base}  -r, --rootless ......................: Run rootless container\n");
+	cprintf("{base}  -k, --keep [cap] ....................: Keep the specified cap\n");
+	cprintf("{base}  -d, --drop [cap] ....................: Drop the specified cap\n");
+	cprintf("{base}  -e, --env [env] [value] .............: Set environment variables to its value (**)\n");
+	cprintf("{base}  -m, --mount [dir/dev/img] [dir] .....: Mount dir/block-device/image to mountpoint\n");
+	cprintf("{base}  -M, --ro-mount [dir/dev/img] [dir] ..: Mount dir/block-device/image as read-only\n");
+	cprintf("{base}  -S, --host-runtime ..................: Bind-mount /dev/, /sys/ and /proc/ from host\n");
+	cprintf("{base}  -R, --read-only .....................: Mount / as read-only\n");
+	cprintf("{base}  -l, --limit [cpuset=cpu/memory=mem] .: Set cpuset/memory limit(***)\n");
+	cprintf("{base}  -w, --no-warnings ...................: Disable warnings\n");
+	cprintf("\n");
+	cprintf("{base}(*)  :  `-a` option also need `-q` is set\n");
+	cprintf("{base}(**) : Will not work if [COMMAND [ARGS]...] is like `/bin/su -`\n");
+	cprintf("{base}(***): Each `-l` option can only set one of the cpuset/memory limits\n");
+	cprintf("{base}(***): for example: `ruri -l memory=1M -l cpuset=1 /test`\n");
+	cprintf("{base}{clear}\n");
 }
 // For `ruri -H`.
 void show_examples(void)
@@ -161,32 +120,30 @@ void show_examples(void)
 	 * Command line examples.
 	 * I think you can understand...
 	 */
-	printf("\n");
-	printf("\033[1;38;2;254;228;208m# Quickly setup a container(with rootfstool):\n");
-	printf("  \033[32mgit \033[33mclone \033[35mhttps://github.com/Moe-hacker/rootfstool\n");
-	printf("  \033[32mcd \033[35mrootfstool\n");
-	printf("  \033[32m./rootfstool \033[33mdownload \033[34m-d \033[35malpine \033[34m-v \033[35medge\n");
-	printf("  \033[32mmkdir \033[35m/tmp/alpine\n");
-	printf("  \033[32msudo tar \033[34m-xvf \033[35mrootfs.tar.xz \033[34m-C \033[35m/tmp/alpine\n");
-	printf("\033[1;38;2;254;228;208m# Run chroot container:\n");
-	printf("  \033[32msudo ruri \033[35m/tmp/alpine\n");
-	printf("\033[1;38;2;254;228;208m# Very simple as you can see.\n");
-	printf("# About the capabilities:\n");
-	printf("# Run privileged chroot container:\n");
-	printf("  \033[32msudo ruri \033[34m-p \033[35m/tmp/alpine\n");
-	printf("\033[1;38;2;254;228;208m# If you want to run privileged chroot container,\n");
-	printf("# but you don't want to give the container cap_sys_chroot privileges:\n");
-	printf("  \033[32msudo ruri \033[34m-p --drop \033[36mcap_sys_chroot \033[35m/tmp/alpine\n");
-	printf("\033[1;38;2;254;228;208m# If you want to run chroot container with common privileges,\n");
-	printf("# but you want cap_sys_admin to be kept:\n");
-	printf("  \033[32msudo ruri \033[34m--keep \033[36mcap_sys_admin \033[35m/tmp/alpine\n");
-	printf("\033[1;38;2;254;228;208m# About unshare:\n");
-	printf("# Unshare container's capability options are same with chroot.\n");
-	printf("\033[1;38;2;254;228;208m# Run unshare container:\n");
-	printf("  \033[32msudo ruri \033[34m-u \033[35m/tmp/alpine\n");
-	printf("\033[1;38;2;254;228;208m# List running containers:\n");
-	printf("  \033[32msudo ruri \033[34m-l\n");
-	printf("\033[1;38;2;254;228;208m# Umount the container:\n");
-	printf("  \033[32msudo ruri \033[34m-U \033[35m/tmp/alpine\n");
-	printf("\n");
+	cprintf("\n");
+	cprintf("{base}# Quickly setup a container(with rootfstool):\n");
+	cprintf("  {green}git {yellow}clone {purple}https://github.com/Moe-hacker/rootfstool\n");
+	cprintf("  {green}cd {purple}rootfstool\n");
+	cprintf("  {green}./rootfstool {yellow}download {blue}-d {purple}alpine {blue}-v {purple}edge\n");
+	cprintf("  {green}mkdir {purple}/tmp/alpine\n");
+	cprintf("  {green}sudo tar {blue}-xvf {purple}rootfs.tar.xz {blue}-C {purple}/tmp/alpine\n");
+	cprintf("{base}# Run chroot container:\n");
+	cprintf("  {green}sudo ruri {purple}/tmp/alpine\n");
+	cprintf("{base}# Very simple as you can see.\n");
+	cprintf("{base}# About the capabilities:\n");
+	cprintf("{base}# Run privileged chroot container:\n");
+	cprintf("  {green}sudo ruri {blue}-p {purple}/tmp/alpine\n");
+	cprintf("{base}# If you want to run privileged chroot container,\n");
+	cprintf("{base}# but you don't want to give the container cap_sys_chroot privileges:\n");
+	cprintf("  {green}sudo ruri {blue}-p -d \033[36mcap_sys_chroot {purple}/tmp/alpine\n");
+	cprintf("{base}# If you want to run chroot container with common privileges,\n");
+	cprintf("{base}# but you want cap_sys_admin to be kept:\n");
+	cprintf("  {green}sudo ruri {blue}-k \033[36mcap_sys_admin {purple}/tmp/alpine\n");
+	cprintf("{base}# About unshare:\n");
+	cprintf("{base}# Unshare container's capability options are same with chroot.\n");
+	cprintf("{base}# Run unshare container:\n");
+	cprintf("  {green}sudo ruri {blue}-u {purple}/tmp/alpine\n");
+	cprintf("{base}# Umount the container:\n");
+	cprintf("  {green}sudo ruri {blue}-U {purple}/tmp/alpine\n");
+	cprintf("{clear}\n");
 }

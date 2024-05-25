@@ -104,6 +104,8 @@ static int mount_device(const char *source, const char *target, unsigned long mo
 			if (!nodev) {
 				ret = mount(source, target, type, mountflags, NULL);
 				if (ret == 0) {
+					// For ro mount, we need a remount.
+					ret = mount(source, target, type, mountflags | MS_REMOUNT, NULL);
 					// mount(2) succeed.
 					return ret;
 				}
@@ -140,11 +142,11 @@ static char *losetup(const char *img)
 		sprintf(loopfile, "/dev/block/loop%d", devnr);
 		loopfd = open(loopfile, O_RDWR | O_CLOEXEC);
 		if (loopfd < 0) {
-			error("\033[31mError: losetup error!\n");
+			error("{red}Error: losetup error!\n");
 		}
 	}
 	// It takes the same efferct as `losetup` command.
-	int imgfd = open(img, O_RDWR | O_CLOEXEC);
+	int imgfd = open(img, O_RDONLY | O_CLOEXEC);
 	ioctl(loopfd, LOOP_SET_FD, imgfd);
 	close(loopfd);
 	close(imgfd);
@@ -169,7 +171,9 @@ int trymount(const char *source, const char *target, unsigned int mountflags)
 	}
 	// Bind-mount dir.
 	if (S_ISDIR(dev_stat.st_mode)) {
-		ret = mount(source, target, NULL, mountflags | MS_BIND, NULL);
+		mount(source, target, NULL, mountflags | MS_BIND, NULL);
+		// For ro mount, we need a remount.
+		ret = mount(source, target, NULL, mountflags | MS_BIND | MS_REMOUNT, NULL);
 	}
 	// Block device.
 	else if (S_ISBLK(dev_stat.st_mode)) {

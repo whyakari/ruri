@@ -37,15 +37,18 @@ static void check_binary(const struct CONTAINER *container)
 	struct stat init_binary_stat;
 	// lstat(3) will return -1 while the init_binary does not exist.
 	if (lstat(init_binary, &init_binary_stat) != 0) {
-		error("\033[31mPlease check if CONTAINER_DIRECTORY and [COMMAND [ARG]...] are correct QwQ\n");
+		umount_container(container->container_dir);
+		error("{red}Please check if CONTAINER_DIRECTORY and [COMMAND [ARG]...] are correct QwQ\n");
 	}
 	if (S_ISDIR(init_binary_stat.st_mode)) {
-		error("\033[31mCOMMAND can not be a directory QwQ\n");
+		umount_container(container->container_dir);
+		error("{red}COMMAND can not be a directory QwQ\n");
 	}
 	// Check QEMU path.
 	if (container->cross_arch != NULL) {
 		if (container->qemu_path == NULL) {
-			error("\033[31mError: path of QEMU is not set QwQ\n");
+			umount_container(container->container_dir);
+			error("{red}Error: path of QEMU is not set QwQ\n");
 		}
 		// Check if QEMU binary exists and is not a directory.
 		char qemu_binary[PATH_MAX];
@@ -54,10 +57,12 @@ static void check_binary(const struct CONTAINER *container)
 		struct stat qemu_binary_stat;
 		// lstat(3) will return -1 while the init_binary does not exist.
 		if (lstat(qemu_binary, &qemu_binary_stat) != 0) {
-			error("\033[31mPlease check if path of QEMU is correct QwQ\n");
+			umount_container(container->container_dir);
+			error("{red}Please check if path of QEMU is correct QwQ\n");
 		}
 		if (S_ISDIR(qemu_binary_stat.st_mode)) {
-			error("\033[31mQEMU path can not be a directory QwQ\n");
+			umount_container(container->container_dir);
+			error("{red}QEMU path can not be a directory QwQ\n");
 		}
 	}
 }
@@ -69,15 +74,14 @@ static void init_container(void)
 	 * The device list and permissions are based on common docker container.
 	 */
 	// Check if system runtime files are already created.
-	DIR *direxist = opendir("/sys/kernel");
+	DIR *direxist = opendir("/sys/class/input");
 	if (direxist == NULL) {
 		// Mount proc,sys and dev.
 		mkdir("/sys", S_IRUSR | S_IWUSR | S_IROTH | S_IWOTH | S_IRGRP | S_IWGRP);
 		mkdir("/proc", S_IRUSR | S_IWUSR | S_IROTH | S_IWOTH | S_IRGRP | S_IWGRP);
 		mkdir("/dev", S_IRUSR | S_IWUSR | S_IROTH | S_IWOTH | S_IRGRP | S_IWGRP);
 		mount("proc", "/proc", "proc", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL);
-		// For /sys,we make it read-only.
-		mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NOEXEC | MS_NODEV | MS_RDONLY, NULL);
+		mount("sysfs", "/sys", "sysfs", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL);
 		mount("tmpfs", "/dev", "tmpfs", MS_NOSUID, "size=65536k,mode=755");
 		// Continue mounting some other directories in /dev.
 		mkdir("/dev/pts", S_IRUSR | S_IWUSR | S_IROTH | S_IWOTH | S_IRGRP | S_IWGRP);
@@ -123,7 +127,7 @@ static void init_container(void)
 		symlink("/proc/self/fd/1", "/dev/stdout");
 		symlink("/proc/self/fd/2", "/dev/stderr");
 		symlink("/dev/null", "/dev/tty0");
-		// Mask some directories/files.
+		// Mask some directories/files that we don't want the container modify it.
 		mount("tmpfs", "/proc/asound", "tmpfs", MS_RDONLY, NULL);
 		mount("tmpfs", "/proc/acpi", "tmpfs", MS_RDONLY, NULL);
 		mount("/dev/null", "/proc/kcore", "", MS_BIND, NULL);
@@ -145,6 +149,10 @@ static void init_container(void)
 // Run before chroot(2), so that init_container() will not take effect.
 static void mount_host_runtime(const struct CONTAINER *container)
 {
+	/*
+	 * It's unsafe to mount /dev, /proc and /sys from the host.
+	 * But in some cases, we have to do this.
+	 */
 	char buf[PATH_MAX] = { '\0' };
 	// Mount /dev.
 	memset(buf, '\0', sizeof(buf));
@@ -182,11 +190,27 @@ static void drop_caps(const struct CONTAINER *container)
 		if (container->drop_caplist[i] == INIT_VALUE) {
 			break;
 		}
-		if (cap_drop_bound(container->drop_caplist[i]) != 0 && !container->no_warnings) {
-			warning("\033[33mWarning: Failed to drop cap `%s`\n", cap_to_name(container->drop_caplist[i]));
-			warning("\033[33merror reason: %s\033[0m\n", strerror(errno));
+		if (CAP_IS_SUPPORTED(container->drop_caplist[i])) {
+			// Drop CapBnd.
+			if (cap_drop_bound(container->drop_caplist[i]) != 0 && !container->no_warnings) {
+				warning("{yellow}Warning: Failed to drop cap `%s`\n", cap_to_name(container->drop_caplist[i]));
+				warning("{yellow}error reason: %s{clear}\n", strerror(errno));
+			}
+			// Drop CapAmb.
+			prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_LOWER, container->drop_caplist[i], 0, 0);
 		}
 	}
+	// Clear CapInh.
+	// hrdp and datap are two pointers, so we malloc() to apply the memory for it first.
+	cap_user_header_t hrdp = (cap_user_header_t)malloc(sizeof *hrdp);
+	cap_user_data_t datap = (cap_user_data_t)malloc(sizeof *datap);
+	hrdp->pid = getpid();
+	hrdp->version = _LINUX_CAPABILITY_VERSION_3;
+	syscall(SYS_capget, hrdp, datap);
+	datap->inheritable = 0;
+	syscall(SYS_capset, hrdp, datap);
+	free(hrdp);
+	free(datap);
 }
 // Set envs.
 static void set_envs(const struct CONTAINER *container)
@@ -206,12 +230,16 @@ static void set_envs(const struct CONTAINER *container)
 // Run after init_container().
 static void setup_binfmt_misc(const struct CONTAINER *container)
 {
+	/*
+	 * For running multi-arch container.
+	 * It need the device support binfmt_misc.
+	 */
 	// Get elf magic header.
 	struct MAGIC *magic = get_magic(container->cross_arch);
 	// Umount container if we get an error.
 	if (magic == NULL) {
 		umount_container(container->container_dir);
-		error("\033[31mError: unknown architecture or same architecture as host: %s\n\nSupported architectures: aarch64, alpha, arm, armeb, cris, hexagon, hppa, i386, loongarch64, m68k, microblaze, mips, mips64, mips64el, mipsel, mipsn32, mipsn32el, ppc, ppc64, ppc64le, riscv32, riscv64, s390x, sh4, sh4eb, sparc, sparc32plus, sparc64, x86_64, xtensa, xtensaeb\033[0m\n", container->cross_arch);
+		error("{red}Error: unknown architecture or same architecture as host: %s\n\nSupported architectures: aarch64, alpha, arm, armeb, cris, hexagon, hppa, i386, loongarch64, m68k, microblaze, mips, mips64, mips64el, mipsel, mipsn32, mipsn32el, ppc, ppc64, ppc64le, riscv32, riscv64, s390x, sh4, sh4eb, sparc, sparc32plus, sparc64, x86_64, xtensa, xtensaeb{clear}\n", container->cross_arch);
 	}
 	char buf[1024] = { '\0' };
 	// Format: ":name:type:offset:magic:mask:interpreter:flags".
@@ -221,7 +249,7 @@ static void setup_binfmt_misc(const struct CONTAINER *container)
 	// This needs CONFIG_BINFMT_MISC enabled in your kernel.
 	int register_fd = open("/proc/sys/fs/binfmt_misc/register", O_WRONLY | O_CLOEXEC);
 	if (register_fd < 0) {
-		error("\033[31mError: Failed to setup binfmt_misc, check your kernel config QwQ");
+		error("{red}Error: Failed to setup binfmt_misc, check your kernel config QwQ");
 	}
 	// Set binfmt_misc config.
 	write(register_fd, buf, strlen(buf));
@@ -231,15 +259,33 @@ static void setup_binfmt_misc(const struct CONTAINER *container)
 // Run before chroot(2).
 void mount_mountpoints(const struct CONTAINER *container)
 {
+	if (!container->rootless) {
+		// '/' should be a mountpoint in container.
+		mount(container->container_dir, container->container_dir, NULL, MS_BIND, NULL);
+	}
+	char *mountpoint_dir = NULL;
+	// Mount extra_mountpoint.
 	for (int i = 0; true; i += 2) {
 		if (container->extra_mountpoint[i] == NULL) {
 			break;
 		}
 		// Set the mountpoint to mount.
-		char *mountpoint_dir = (char *)malloc(strlen(container->extra_mountpoint[i + 1]) + strlen(container->container_dir) + 2);
+		mountpoint_dir = (char *)malloc(strlen(container->extra_mountpoint[i + 1]) + strlen(container->container_dir) + 2);
 		strcpy(mountpoint_dir, container->container_dir);
 		strcat(mountpoint_dir, container->extra_mountpoint[i + 1]);
 		trymount(container->extra_mountpoint[i], mountpoint_dir, 0);
+		free(mountpoint_dir);
+	}
+	// Mount extra_ro_mountpoint.
+	for (int i = 0; true; i += 2) {
+		if (container->extra_ro_mountpoint[i] == NULL) {
+			break;
+		}
+		// Set the mountpoint to mount.
+		mountpoint_dir = (char *)malloc(strlen(container->extra_ro_mountpoint[i + 1]) + strlen(container->container_dir) + 2);
+		strcpy(mountpoint_dir, container->container_dir);
+		strcat(mountpoint_dir, container->extra_ro_mountpoint[i + 1]);
+		trymount(container->extra_ro_mountpoint[i], mountpoint_dir, MS_RDONLY);
 		free(mountpoint_dir);
 	}
 }
@@ -248,7 +294,7 @@ void run_chroot_container(struct CONTAINER *container)
 {
 	/*
 	 * It's called by main() and run_unshare_container().
-	 * It will chroot(2) to container_dir, call to init_container(), drop capabilities and exec(3) init command in container.
+	 * It will chroot(2) to container_dir, and exec(3) init command in container.
 	 */
 	// Ignore SIGTTIN, if we are running in the background, SIGTTIN may kill this process.
 	sigset_t sigs;
@@ -260,14 +306,18 @@ void run_chroot_container(struct CONTAINER *container)
 	// container_dir shoud bind-mount before chroot(2),
 	// mount_host_runtime() and store_info() will be called here.
 	char buf[PATH_MAX] = { '\0' };
-	sprintf(buf, "%s/sys/kernel", container->container_dir);
+	sprintf(buf, "%s/sys/class/input", container->container_dir);
 	DIR *direxist = opendir(buf);
 	if (direxist == NULL) {
-		// '/' should be a mountpoint in container.
-		mount(container->container_dir, container->container_dir, NULL, MS_BIND, NULL);
+		// Mount mountpoints.
+		mount_mountpoints(container);
 		// Store container info.
 		if (!container->enable_unshare && container->use_rurienv) {
 			store_info(container);
+		}
+		// If `-R` option is set, make / read-only.
+		if (container->ro_root) {
+			mount(container->container_dir, container->container_dir, NULL, MS_BIND | MS_REMOUNT | MS_RDONLY, NULL);
 		}
 		// If `-S` option is set, bind-mount /dev/, /sys/ and /proc/ from host.
 		if (container->mount_host_runtime) {
@@ -282,8 +332,6 @@ void run_chroot_container(struct CONTAINER *container)
 			read_info(container, container->container_dir);
 		}
 	}
-	// Mount mountpoints.
-	mount_mountpoints(container);
 	// Set default command for exec().
 	if (container->command[0] == NULL) {
 		container->command[0] = "/bin/su";
@@ -296,9 +344,81 @@ void run_chroot_container(struct CONTAINER *container)
 	chdir(container->container_dir);
 	chroot(".");
 	chdir("/");
-	chroot("/");
 	// Mount/create system runtime dir/files.
 	init_container();
+	// Fix /etc/mtab.
+	remove("/etc/mtab");
+	unlink("/etc/mtab");
+	symlink("/proc/mounts", "/etc/mtab");
+	// Set up cgroup limit.
+	set_limit(container);
+	// Set up Seccomp BPF.
+	if (container->enable_seccomp) {
+		setup_seccomp(container);
+	}
+	// Drop caps.
+	drop_caps(container);
+	// Set envs.
+	set_envs(container);
+	// Fix a bug that the terminal is frozen.
+	usleep(200000);
+	// Set NO_NEW_PRIVS Flag.
+	// It requires Linux3.5 or later.
+	// It will make sudo unavailable in container.
+	if (container->no_new_privs) {
+		prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+	}
+	// Disallow raising ambient capabilities via the prctl(2) PR_CAP_AMBIENT_RAISE operation.
+	prctl(PR_SET_SECUREBITS, SECBIT_NO_CAP_AMBIENT_RAISE);
+	// We only need 0(stdin), 1(stdout), 2(stderr),
+	// So we close the other fds to avoid security issues.
+	for (int i = 3; i <= 10; i++) {
+		close(i);
+	}
+	// Setup binfmt_misc.
+	if (container->cross_arch != NULL) {
+		setup_binfmt_misc(container);
+	}
+	// Fix console color.
+	cprintf("{clear}");
+	// Execute command in container.
+	// Use exec(3) function because system(3) may be unavailable now.
+	if (execv(container->command[0], container->command) == -1) {
+		// Catch exceptions.
+		error("{red}Failed to execute `%s`\nexecv() returned: %d\nerror reason: %s\nNote: unset $LD_PRELOAD before running ruri might fix this{clear}\n", container->command[0], errno, strerror(errno));
+	}
+}
+// Run chroot container.
+void run_rootless_chroot_container(struct CONTAINER *container)
+{
+	/*
+	 * It's called by run_rootless_container().
+	 * It will chroot(2) to container_dir, and exec(3) init command in container.
+	 */
+	// Ignore SIGTTIN, if we are running in the background, SIGTTIN may kill this process.
+	sigset_t sigs;
+	sigemptyset(&sigs);
+	sigaddset(&sigs, SIGTTIN);
+	sigaddset(&sigs, SIGTTOU);
+	sigprocmask(SIG_BLOCK, &sigs, 0);
+	// Mount mountpoints.
+	mount_mountpoints(container);
+	// Store container info.
+	if (container->use_rurienv) {
+		store_info(container);
+	}
+	// Set default command for exec().
+	if (container->command[0] == NULL) {
+		container->command[0] = "/bin/su";
+		container->command[1] = "-";
+		container->command[2] = NULL;
+	}
+	// Check binary used.
+	check_binary(container);
+	// chroot(2) into container.
+	chdir(container->container_dir);
+	chroot(".");
+	chdir("/");
 	// Fix /etc/mtab.
 	remove("/etc/mtab");
 	unlink("/etc/mtab");
@@ -330,10 +450,12 @@ void run_chroot_container(struct CONTAINER *container)
 	if (container->cross_arch != NULL) {
 		setup_binfmt_misc(container);
 	}
+	// Fix console color.
+	cprintf("{clear}");
 	// Execute command in container.
 	// Use exec(3) function because system(3) may be unavailable now.
 	if (execv(container->command[0], container->command) == -1) {
 		// Catch exceptions.
-		error("\033[31mFailed to execute `%s`\nexecv() returned: %d\nerror reason: %s\nNote: unset $LD_PRELOAD before running ruri might fix this\033[0m\n", container->command[0], errno, strerror(errno));
+		error("{red}Failed to execute `%s`\nexecv() returned: %d\nerror reason: %s\nNote: unset $LD_PRELOAD before running ruri might fix this{clear}\n", container->command[0], errno, strerror(errno));
 	}
 }

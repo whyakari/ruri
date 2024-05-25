@@ -38,71 +38,18 @@ CC_LOG = @printf '    $(CCCOLOR)CC$(ENDCOLOR) $(BINCOLOR)%b$(ENDCOLOR)\n'
 LD_LOG = @printf '    $(LDCOLOR)LD$(ENDCOLOR) $(BINCOLOR)%b$(ENDCOLOR)\n'
 STRIP_LOG = @printf ' $(STRIPCOLOR)STRIP$(ENDCOLOR) $(BINCOLOR)%b$(ENDCOLOR)\n'
 CLEAN_LOG = @printf ' $(CCCOLOR)CLEAN$(ENDCOLOR) $(BINCOLOR)%b$(ENDCOLOR)\n'
-# Compiler.
-CC = clang
 # Strip.
 STRIP = strip
-# Link-Time Optimization.
-LTO = -flto
-# Position-Independent Executables.
-PIE = -fPIE
-# No-eXecute.
-NX = -z noexecstack
-# Relocation Read-Only.
-RELRO = -z now
-# Stack Canary.
-CANARY = -fstack-protector-all
-# Stack Clash Protection.
-CLASH_PROTECT = -fstack-clash-protection
-# Shadow Stack.
-SHADOW_STACK = -mshstk
-# Fortified Source.
-FORTIFY = -D_FORTIFY_SOURCE=3 -Wno-unused-result
-# Other "one-key" optimization.
-OPTIMIZE = -O2
-# GNU Symbolic Debugger.
-DEBUGGER = -ggdb
-# Disable other optimizations.
-NO_OPTIMIZE = -O0 -fno-omit-frame-pointer
-# Disable Relocation Read-Only.
-NO_RELRO = -z norelro
-# Disable No-eXecute.
-NO_NX = -z execstack
-# Disable Stack Canary.
-NO_CANARY = -fno-stack-protector
-# Warning Options.
-WALL = -Wall -Wextra -pedantic -Wconversion -Wno-newline-eof
-# For production.
-OPTIMIZE_CFLAGS = $(LTO) $(PIE) $(CANARY) $(CLASH_PROTECT) $(SHADOW_STACK) $(AUTO_VAR_INIT) $(FORTIFY) $(OPTIMIZE) $(COMMIT_ID) $(STANDARD)
-# Static link.
-STATIC_CFLAGS = $(OPTIMIZE_CFLAGS) -static
-# For Testing.
-DEV_CFLAGS = $(DEBUGGER) $(NO_OPTIMIZE) $(NO_CANARY) $(WALL) $(COMMIT_ID) $(STANDARD)
+# Formater.
+FORMATER = clang-format -i
 SRC = src/*.c
 HEADER = src/include/*.h
-BIN_TARGET = ruri
-STANDARD = -std=gnu99 -Wno-gnu-zero-variadic-macro-arguments
-# For ruri -v.
-COMMIT_ID = -DRURI_COMMIT_ID=\"`git log --oneline|head -1|cut -d " " -f 1`\"
-# For `make fromat`.
-FORMATER = clang-format -i
-# For `make check`.
-CHECKER = clang-tidy --use-color
-# Unused checks are disabled.
-CHECKER_FLAGS = --checks=*,-clang-analyzer-security.insecureAPI.strcpy,-altera-unroll-loops,-cert-err33-c,-concurrency-mt-unsafe,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-readability-function-cognitive-complexity,-cppcoreguidelines-avoid-magic-numbers,-readability-magic-numbers,-bugprone-easily-swappable-parameters,-cert-err34-c,-misc-include-cleaner,-readability-identifier-length,-bugprone-signal-handler,-cert-msc54-cpp,-cert-sig30-c,-altera-id-dependent-backward-branch
-# Link with libcap, libpthread and libseccomp.
-LD_FLAGS = -lcap -lpthread -lseccomp $(NX) $(RELRO)
-DEV_LD_FLAGS = -lcap -lpthread -lseccomp $(NO_RELRO) $(NO_NX)
-# Fix issues in termux (with bionic).
-BIONIC_FIX = -ffunction-sections -fdata-sections
-BIONIC_CFLAGS = $(OPTIMIZE_CFLAGS) $(BIONIC_FIX) -static
-# Bionic has built-in libpthread.
-BIONIC_LD_FLAGS = -lcap -lseccomp -Wl,--gc-sections $(NX) $(RELRO)
+include config.mk
 # Target.
-objects = caplist.o chroot.o info.o rurienv.o seccomp.o signal.o umount.o unshare.o rootless.o mount.o k2v.o elf-magic.o config.o main.o
+objects = anime.o caplist.o chroot.o cprintf.o info.o rurienv.o seccomp.o signal.o umount.o unshare.o rootless.o mount.o k2v.o elf-magic.o config.o cgroup.o main.o
 O = out
+BIN_TARGET = ruri
 .ONESHELL:
-all :CFLAGS=$(OPTIMIZE_CFLAGS)
 all :build_dir $(objects)
 	@cd $(O)
 	@$(CC) $(CFLAGS) -o $(BIN_TARGET) $(objects) $(LD_FLAGS)
@@ -111,39 +58,15 @@ all :build_dir $(objects)
 	$(STRIP_LOG) $(BIN_TARGET)
 	@cp -f $(BIN_TARGET) ../
 	@cd ..&&rm -rf $(O)
-dev :CFLAGS=$(DEV_CFLAGS)
-dev :build_dir $(objects)
-	@cd $(O)
-	$(LD_LOG) $(BIN_TARGET)
-	@$(CC) $(CFLAGS) -o $(BIN_TARGET) $(objects) $(DEV_LD_FLAGS)
-	@cp -f $(BIN_TARGET) ../
-	@cd ..&&rm -rf $(O)
-static :CFLAGS=$(STATIC_CFLAGS)
-static :build_dir $(objects)
-	@cd $(O)
-	$(LD_LOG) $(BIN_TARGET)
-	@$(CC) $(CFLAGS) -o $(BIN_TARGET) $(objects) $(LD_FLAGS)
-	$(STRIP_LOG) $(BIN_TARGET)
-	@$(STRIP) $(BIN_TARGET)
-	@cp -f $(BIN_TARGET) ../
-	@cd ..&&rm -rf $(O)
-static-bionic :CFLAGS=$(BIONIC_CFLAGS)
-static-bionic :build_dir $(objects)
-	@cd $(O)
-	$(LD_LOG) $(BIN_TARGET)
-	@$(CC) $(CFLAGS) -o $(BIN_TARGET) $(objects) $(BIONIC_LD_FLAGS)
-	$(STRIP_LOG) $(BIN_TARGET)
-	@$(STRIP) $(BIN_TARGET)
-	@cp -f $(BIN_TARGET) ../
-	@cd ..&&rm -rf $(O)
+dev :all
+static :all
+static-bionic :all
 build_dir:
 	@mkdir -p $(O)
 $(objects) :%.o:src/%.c $(build_dir)
 	@cd $(O)
-	@$(CC) $(CFLAGS) -Wno-unused-command-line-argument -c ../$< -o $@
+	@$(CC) $(CFLAGS) -c ../$< -o $@
 	$(CC_LOG) $@
-install :all
-	install -m 777 $(BIN_TARGET) ${PREFIX}/bin/$(BIN_TARGET)
 check :
 	@printf "\033[1;38;2;254;228;208mCheck list:\n"
 	@sleep 1.5s
@@ -163,17 +86,16 @@ clean :
 upk2v :
 	cp ../libk2v/src/k2v.c src/k2v.c
 	cp ../libk2v/src/include/k2v.h src/include/k2v.h
+upcprintf :
+	cp ../cprintf/cprintf.c src/cprintf.c
+	cp ../cprintf/include/cprintf.h src/include/cprintf.h
 help :
 	@printf "\033[1;38;2;254;228;208mUsage:\n"
 	@echo "  make all            compile"
-	@echo "  make install        install ruri to \$$PREFIX"
-	@echo "  make static         static compile,with musl or glibc"
-	@echo "  make static-bionic  static compile,with bionic"
 	@echo "  make clean          clean"
 	@echo "Only for developers:"
-	@echo "  make dev            compile without optimizations, enable gdb debug information and extra logs."
 	@echo "  make check          run clang-tidy"
 	@echo "  make format         format code"
 	@echo "*Premature optimization is the root of all evil."
 	@echo "Dependent libraries:"
-	@printf " - libpthread\n - libcap (for non-bionic system)\n - libseccomp\n\033[0m"
+	@printf " - libpthread (for non-bionic system)\n - libcap\n - libseccomp\n\033[0m"

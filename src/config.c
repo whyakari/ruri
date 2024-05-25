@@ -30,9 +30,14 @@
 #include "include/ruri.h"
 char *container_info_to_k2v(const struct CONTAINER *container)
 {
-	char *ret = (char *)malloc(65536);
+	/*
+	 * Format container info to k2v format.
+	 * return the string type of config.
+	 */
+	// The HOMO way!
+	size_t size = 114514;
+	char *ret = (char *)malloc(size);
 	ret[0] = '\0';
-	char *buf = NULL;
 	// drop_caplist.
 	char *drop_caplist[CAP_LAST_CAP + 1] = { NULL };
 	int len = 0;
@@ -43,45 +48,35 @@ char *container_info_to_k2v(const struct CONTAINER *container)
 		}
 		drop_caplist[i] = cap_to_name(container->drop_caplist[i]);
 	}
-	buf = char_array_to_k2v("drop_caplist", drop_caplist, len);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(char_array, ret, "drop_caplist", drop_caplist, len);
+	// Make ASAN happy.
+	for (int i = 0; i < len; i++) {
+		cap_free(drop_caplist[i]);
+	}
 	// no_new_privs.
-	buf = bool_to_k2v("no_new_privs", container->no_new_privs);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(bool, ret, "no_new_privs", container->no_new_privs);
 	// enable_unshare.
-	buf = bool_to_k2v("enable_unshare", container->enable_unshare);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(bool, ret, "enable_unshare", container->enable_unshare);
 	// rootless.
-	buf = bool_to_k2v("rootless", container->rootless);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(bool, ret, "rootless", container->rootless);
 	// mount_host_runtime.
-	buf = bool_to_k2v("mount_host_runtime", container->mount_host_runtime);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(bool, ret, "mount_host_runtime", container->mount_host_runtime);
+	// ro_root.
+	ret = k2v_add_config(bool, ret, "ro_root", container->ro_root);
 	// no_warnings.
-	buf = bool_to_k2v("no_warnings", container->no_warnings);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(bool, ret, "no_warnings", container->no_warnings);
 	// cross_arch.
-	buf = char_to_k2v("cross_arch", container->cross_arch);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(char, ret, "cross_arch", container->cross_arch);
 	// qemu_path.
-	buf = char_to_k2v("qemu_path", container->qemu_path);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(char, ret, "qemu_path", container->qemu_path);
 	// use_rurienv.
-	buf = bool_to_k2v("use_rurienv", container->use_rurienv);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(bool, ret, "use_rurienv", container->use_rurienv);
 	// enable_seccomp.
-	buf = bool_to_k2v("enable_seccomp", container->enable_seccomp);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(bool, ret, "enable_seccomp", container->enable_seccomp);
+	// cpuset.
+	ret = k2v_add_config(char, ret, "cpuset", container->cpuset);
+	// memory.
+	ret = k2v_add_config(char, ret, "memory", container->memory);
 	// extra_mountpoint.
 	for (int i = 0; true; i++) {
 		if (container->extra_mountpoint[i] == NULL) {
@@ -89,9 +84,15 @@ char *container_info_to_k2v(const struct CONTAINER *container)
 			break;
 		}
 	}
-	buf = char_array_to_k2v("extra_mountpoint", container->extra_mountpoint, len);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(char_array, ret, "extra_mountpoint", container->extra_mountpoint, len);
+	// extra_ro_mountpoint.
+	for (int i = 0; true; i++) {
+		if (container->extra_ro_mountpoint[i] == NULL) {
+			len = i;
+			break;
+		}
+	}
+	ret = k2v_add_config(char_array, ret, "extra_ro_mountpoint", container->extra_ro_mountpoint, len);
 	// env.
 	for (int i = 0; true; i++) {
 		if (container->env[i] == NULL) {
@@ -99,9 +100,7 @@ char *container_info_to_k2v(const struct CONTAINER *container)
 			break;
 		}
 	}
-	buf = char_array_to_k2v("env", container->env, len);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(char_array, ret, "env", container->env, len);
 	// command.
 	for (int i = 0; true; i++) {
 		if (container->command[i] == NULL) {
@@ -109,19 +108,21 @@ char *container_info_to_k2v(const struct CONTAINER *container)
 			break;
 		}
 	}
-	buf = char_array_to_k2v("command", container->command, len);
-	strcat(ret, buf);
-	free(buf);
+	ret = k2v_add_config(char_array, ret, "command", container->command, len);
 	// container_dir.
-	buf = char_to_k2v("container_dir", container->container_dir);
-	strcat(ret, buf);
+	ret = k2v_add_config(char, ret, "container_dir", container->container_dir);
 	return ret;
 }
-struct CONTAINER *read_config(struct CONTAINER *container, const char *path)
+void read_config(struct CONTAINER *container, const char *path)
 {
-	int fd = open(path, O_RDONLY);
+	/*
+	 * Read k2v format config file,
+	 * and set container config.
+	 * Return the `container` struct back.
+	 */
+	int fd = open(path, O_RDONLY | O_CLOEXEC);
 	if (fd < 0) {
-		error("\033[31mNo such file or directory:%s\n\033[0m", path);
+		error("{red}No such file or directory:%s\n{clear}", path);
 	}
 	struct stat filestat;
 	fstat(fd, &filestat);
@@ -154,10 +155,16 @@ struct CONTAINER *read_config(struct CONTAINER *container, const char *path)
 	container->rootless = key_get_bool("rootless", buf);
 	// Get mount_host_runtime.
 	container->mount_host_runtime = key_get_bool("mount_host_runtime", buf);
+	// Get ro_root.
+	container->ro_root = key_get_bool("ro_root", buf);
 	// Get no_warnings.
 	container->no_warnings = key_get_bool("no_warnings", buf);
 	// Get use_rurienv.
 	container->use_rurienv = key_get_bool("use_rurienv", buf);
+	// Get cpuset.
+	container->cpuset = key_get_char("cpuset", buf);
+	// Get memory.
+	container->memory = key_get_char("memory", buf);
 	// Get env.
 	int envlen = key_get_char_array("env", buf, container->env);
 	container->env[envlen] = NULL;
@@ -166,5 +173,9 @@ struct CONTAINER *read_config(struct CONTAINER *container, const char *path)
 	int mlen = key_get_char_array("extra_mountpoint", buf, container->extra_mountpoint);
 	container->extra_mountpoint[mlen] = NULL;
 	container->extra_mountpoint[mlen + 1] = NULL;
-	return container;
+	// Get extra_ro_mountpoint.
+	mlen = key_get_char_array("extra_ro_mountpoint", buf, container->extra_ro_mountpoint);
+	container->extra_ro_mountpoint[mlen] = NULL;
+	container->extra_ro_mountpoint[mlen + 1] = NULL;
+	free(buf);
 }

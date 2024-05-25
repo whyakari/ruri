@@ -37,20 +37,22 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <time.h>
 #include <linux/limits.h>
 #include <linux/sched.h>
 #include <linux/securebits.h>
 #include <linux/stat.h>
 #include <linux/version.h>
 #include <linux/loop.h>
-#include <sys/ioctl.h>
 #include <sys/mount.h>
+#include <linux/fs.h>
+#include <sys/ioctl.h>
+#include <sys/syscall.h>
 #include <sys/prctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/types.h>
-#include <sys/un.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -58,20 +60,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-// This program need to be linked with `-lpthread` if the system uses glibc or musl.
-#include <pthread.h>
 // This program need to be linked with `-lseccomp`.
 #include <seccomp.h>
 // This program need to be linked with `-lcap`.
 #include <sys/capability.h>
+#ifndef LIBCAP_MAJOR
+#define LIBCAP_MAJOR 114
+#define LIBCAP_MINOR 514
+#endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
 #warning "This program has not been tested on Linux 3.x or earlier."
 #endif
 // Bool!!!
 #if __STDC_VERSION__ < 202000L
+#ifndef bool
 #define bool _Bool
 #define true ((_Bool) + 1u)
 #define false ((_Bool) + 0u)
+#endif
 #endif
 // For initializing some variables.
 #define INIT_VALUE (-114)
@@ -83,6 +89,7 @@
 #include "elf-magic.h"
 #include "version.h"
 #include "k2v.h"
+#include "cprintf.h"
 // Info of a container to create.
 struct __attribute__((aligned(128))) CONTAINER {
 	// Container directory.
@@ -93,6 +100,8 @@ struct __attribute__((aligned(128))) CONTAINER {
 	char *command[MAX_COMMANDS];
 	// Extra mountpoints.
 	char *extra_mountpoint[MAX_MOUNTPOINTS];
+	// Extra read-only mountpoints.
+	char *extra_ro_mountpoint[MAX_MOUNTPOINTS];
 	// Environment variables.
 	char *env[MAX_ENVS];
 	// Set NO_NEW_PRIV bit.
@@ -109,12 +118,20 @@ struct __attribute__((aligned(128))) CONTAINER {
 	bool mount_host_runtime;
 	// Container pid for setns(2).
 	pid_t ns_pid;
-	// Arch of cross-architecture container.
+	// Arch of multi-architecture container.
 	char *cross_arch;
 	// Path of QEMU binary.
 	char *qemu_path;
 	// Do not store .rurienv file.
 	bool use_rurienv;
+	// Mount / as read-only.
+	bool ro_root;
+	// Cpuset.
+	char *cpuset;
+	// Memory.
+	char *memory;
+	// A number based on the time when creating container.
+	int container_id;
 };
 // For get_magic().
 #define magicof(x) (x##_magic)
@@ -124,20 +141,21 @@ struct __attribute__((aligned(16))) MAGIC {
 	char *mask;
 };
 // Warnings.
-#define warning(...) fprintf(stderr, ##__VA_ARGS__)
+#define warning(...) cfprintf(stderr, ##__VA_ARGS__)
 // Show error msg and exit.
-#define error(...)                                                                                                            \
-	{                                                                                                                     \
-		fprintf(stderr, ##__VA_ARGS__);                                                                               \
-		fprintf(stderr, "\033[1;38;2;254;228;208m%s\033[0m\n", "  .^.   .^.");                                        \
-		fprintf(stderr, "\033[1;38;2;254;228;208m%s\033[0m\n", "  /⋀\\_ﾉ_/⋀\\");                                      \
-		fprintf(stderr, "\033[1;38;2;254;228;208m%s\033[0m\n", " /ﾉｿﾉ\\ﾉｿ丶)|");                                      \
-		fprintf(stderr, "\033[1;38;2;254;228;208m%s\033[0m\n", " ﾙﾘﾘ >  x )ﾘ");                                       \
-		fprintf(stderr, "\033[1;38;2;254;228;208m%s\033[0m\n", "ﾉノ㇏  ^ ﾉ|ﾉ");                                       \
-		fprintf(stderr, "\033[1;38;2;254;228;208m%s\033[0m\n", "      ⠁⠁");                                           \
-		fprintf(stderr, "\033[1;38;2;254;228;208m%s\033[0m\n", "If you think something is wrong, please report at:"); \
-		fprintf(stderr, "\033[4;1;38;2;254;228;208m%s\033[0m\n", "https://github.com/Moe-hacker/ruri/issues");        \
-		exit(EXIT_FAILURE);                                                                                           \
+#define error(...)                                                                                           \
+	{                                                                                                    \
+		cfprintf(stderr, ##__VA_ARGS__);                                                             \
+		cfprintf(stderr, "{base}%s{clear}\n", "  .^.   .^.");                                        \
+		cfprintf(stderr, "{base}%s{clear}\n", "  /⋀\\_ﾉ_/⋀\\");                                      \
+		cfprintf(stderr, "{base}%s{clear}\n", " /ﾉｿﾉ\\ﾉｿ丶)|");                                      \
+		cfprintf(stderr, "{base}%s{clear}\n", " ﾙﾘﾘ >  x )ﾘ");                                       \
+		cfprintf(stderr, "{base}%s{clear}\n", "ﾉノ㇏  ^ ﾉ|ﾉ");                                       \
+		cfprintf(stderr, "{base}%s{clear}\n", "      ⠁⠁");                                           \
+		cfprintf(stderr, "{base}%s{clear}\n", "RURI ERROR MESSAGE");                                 \
+		cfprintf(stderr, "{base}%s{clear}\n", "If you think something is wrong, please report at:"); \
+		cfprintf(stderr, "\033[4m{base}%s{clear}\n", "https://github.com/Moe-hacker/ruri/issues");   \
+		exit(EXIT_FAILURE);                                                                          \
 	}
 void register_signal(void);
 void setup_seccomp(struct CONTAINER *container);
@@ -157,9 +175,11 @@ void run_unshare_container(struct CONTAINER *container);
 char *container_info_to_k2v(const struct CONTAINER *container);
 void run_chroot_container(struct CONTAINER *container);
 void run_rootless_container(struct CONTAINER *container);
+void run_rootless_chroot_container(struct CONTAINER *container);
 int trymount(const char *source, const char *target, unsigned int mountflags);
 void umount_container(const char *container_dir);
-struct CONTAINER *read_config(struct CONTAINER *container, const char *path);
+void read_config(struct CONTAINER *container, const char *path);
+void set_limit(const struct CONTAINER *container);
 //   ██╗ ██╗  ███████╗   ████╗   ███████╗
 //  ████████╗ ██╔════╝ ██╔═══██╗ ██╔════╝
 //  ╚██╔═██╔╝ █████╗   ██║   ██║ █████╗
